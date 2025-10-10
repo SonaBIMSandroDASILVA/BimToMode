@@ -32,9 +32,6 @@
 			<Generator>MSBuild:Compile</Generator>
 		</None>
 	</ItemGroup>
-	<ItemGroup>
-	  <Folder Include="PythonScripts\" />
-	</ItemGroup>
 
 	<!-- Post-build : Copie automatique vers Revit -->
 	<Target Name="PostBuild" AfterTargets="PostBuildEvent">

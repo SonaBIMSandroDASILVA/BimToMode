@@ -33,16 +33,16 @@ namespace BimToMode
                 // Exécuter Python
                 bool success = RunPythonScript();
 
-                if (success)
-                {
-                    // Lire le JSON de sortie
-                    ProcessPythonOutput();
-                }
-                else
-                {
-                    MessageBox.Show("Erreur lors de l'exécution du script Python execute",
-                        "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
-                }
+                //if (success)
+                //{
+                //    // Lire le JSON de sortie
+                //    ProcessPythonOutput();
+                //}
+                //else
+                //{
+                //    MessageBox.Show("Erreur lors de l'exécution du script Python execute",
+                //        "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+                //}
             }
             catch (Exception ex)
             {
@@ -60,35 +60,30 @@ namespace BimToMode
         {
             try
             {
-                // Récupérer le chemin de l'assembly
-                string assemblyPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
-                string? assemblyDir = Path.GetDirectoryName(assemblyPath);
+                // ✅ Chemin FIXE vers le dossier Addins de votre plugin
+                string assemblyDir = @"C:\ProgramData\Autodesk\Revit\Addins\2026\BimToMode";
 
-                if (string.IsNullOrEmpty(assemblyDir))
-                {
-                    Debug.WriteLine("Impossible de déterminer le dossier de l'assembly.");
-                    return false;
-                }
+                Debug.WriteLine($"📁 Dossier plugin : {assemblyDir}");
 
-                // Chemin vers l'EXE Python
                 string exePath = Path.Combine(assemblyDir, "PythonScripts", "ScanToBIM.exe");
 
-                // Vérifier que l'EXE existe
+                Debug.WriteLine($"🔍 Recherche de : {exePath}");
+
                 if (!File.Exists(exePath))
                 {
-                    Debug.WriteLine($"EXE introuvable : {exePath}");
+                    // Message plus détaillé
                     MessageBox.Show(
-                        $"L'exécutable Python est introuvable :\n{exePath}\n\n" +
-                        $"Vérifiez que ScanToBIM.exe est bien copié lors du build.",
+                        $"L'exécutable Python est introuvable.\n\n" +
+                        $"Chemin attendu :\n{exePath}\n\n" +
+                        $"Vérifiez que le post-build event a bien copié le fichier.",
                         "Fichier manquant",
                         MessageBoxButton.OK,
                         MessageBoxImage.Error);
                     return false;
                 }
 
-                Debug.WriteLine($"Lancement de : {exePath}");
+                Debug.WriteLine($"✅ EXE trouvé, lancement...");
 
-                // Lancer l'EXE Python (sans attendre)
                 ProcessStartInfo start = new ProcessStartInfo
                 {
                     FileName = exePath,
@@ -96,20 +91,25 @@ namespace BimToMode
                     WorkingDirectory = Path.GetDirectoryName(exePath)
                 };
 
-                Process? pythonProcess = Process.Start(start);
+                Process.Start(start);
 
-                if (pythonProcess == null)
-                {
-                    Debug.WriteLine("Impossible de démarrer le processus Python.");
-                    return false;
-                }
+                MessageBox.Show(
+                    "L'interface Python est en cours de lancement ce processus peut prendre quelques secondes.\n\n" +
+                    "Complétez le workflow, puis cliquez sur 'Suivant'.",
+                    "Information",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
 
-                Debug.WriteLine($"✅ Processus Python lancé (PID: {pythonProcess.Id})");
                 return true;
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"❌ Erreur lors du lancement : {ex.Message}");
+                Debug.WriteLine($"❌ Erreur : {ex.Message}");
+                MessageBox.Show(
+                    $"Erreur lors du lancement :\n{ex.Message}",
+                    "Erreur",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
                 return false;
             }
         }
