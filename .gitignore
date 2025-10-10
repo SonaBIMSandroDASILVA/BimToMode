@@ -294,6 +294,20 @@ node_modules/
 # Visual Studio 6 auto-generated workspace file (contains which files were open etc.)
 *.vbw
 
+# Ignorer tous les fichiers .exe
+*.exe
+
+# Ignorer tous les fichiers dans PythonScripts
+PythonScripts/
+
+# Autres fichiers volumineux courants à ignorer
+*.dll
+*.so
+*.dylib
+*.zip
+*.rar
+*.7z
+
 # Visual Studio LightSwitch build output
 **/*.HTMLClient/GeneratedArtifacts
 **/*.DesktopClient/GeneratedArtifacts
