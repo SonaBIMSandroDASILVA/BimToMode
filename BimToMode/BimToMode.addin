@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RevitAddIns>
+	<AddIn Type="Application">
+		<Name>BimToMode</Name>
+		<Assembly>BimToMode\BimToMode.dll</Assembly>
+		<AddInId>EF21FD68-8EB3-4CE5-A5F3-38B62E181D84</AddInId>
+		<FullClassName>BimToMode.App</FullClassName>
+		<VendorId>SPP</VendorId>
+		<VendorDescription>Scan to bim.</VendorDescription>
+	</AddIn>
+</RevitAddIns>

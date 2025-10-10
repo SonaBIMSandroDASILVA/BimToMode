@@ -1,0 +1,43 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net8.0-windows</TargetFramework>
+		<UseWPF>true</UseWPF>
+		<UseWindowsForms>true</UseWindowsForms>
+		<Nullable>enable</Nullable>
+		<PlatformTarget>x64</PlatformTarget>
+		<Configurations>Debug;Release</Configurations>
+		<LangVersion>latest</LangVersion>
+	</PropertyGroup>
+
+	<!-- Références Revit API -->
+	<ItemGroup>
+		<Reference Include="RevitAPI">
+			<HintPath>C:\Program Files\Autodesk\Revit 2026\RevitAPI.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+		<Reference Include="RevitAPIUI">
+			<HintPath>C:\Program Files\Autodesk\Revit 2026\RevitAPIUI.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+	</ItemGroup>
+
+	<!-- Packages NuGet utiles (optionnel mais recommandé) -->
+	<ItemGroup>
+		<PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+	</ItemGroup>
+
+	<!-- Configuration des fichiers XAML -->
+	<ItemGroup>
+		<None Update="MainWindow.xaml">
+			<Generator>MSBuild:Compile</Generator>
+		</None>
+	</ItemGroup>
+	<ItemGroup>
+	  <Folder Include="PythonScripts\" />
+	</ItemGroup>
+
+	<!-- Post-build : Copie automatique vers Revit -->
+	<Target Name="PostBuild" AfterTargets="PostBuildEvent">
+		<Exec Command="if not exist &quot;C:\ProgramData\Autodesk\Revit\Addins\2026\BimToMode\&quot; mkdir &quot;C:\ProgramData\Autodesk\Revit\Addins\2026\BimToMode\&quot;&#xD;&#xA;if not exist &quot;C:\ProgramData\Autodesk\Revit\Addins\2026\BimToMode\PythonScripts\&quot; mkdir &quot;C:\ProgramData\Autodesk\Revit\Addins\2026\BimToMode\PythonScripts\&quot;&#xD;&#xA;&#xD;&#xA;copy &quot;$(ProjectDir)$(OutDir)*.dll&quot; &quot;$(ProgramData)\Autodesk\Revit\Addins\2026\$(AssemblyName)&quot; /y&#xD;&#xA;copy &quot;$(ProjectDir)$(OutDir)*.dll&quot; &quot;$(ProgramData)\Autodesk\Revit\Addins\2026\Debug&quot; /y&#xD;&#xA;&#xD;&#xA;:: __________________FICHIER ADDIN_______________________________________&#xD;&#xA;echo Copie fichier .addIn&#xD;&#xA;copy &quot;$(ProjectDir)*.addin&quot; &quot;$(ProgramData)\Autodesk\Revit\Addins\2026&quot; /y&#xD;&#xA;&#xD;&#xA;:: __________________FICHIER EXE_______________________________________&#xD;&#xA;echo Copie fichier .exe&#xD;&#xA;copy &quot;$(ProjectDir)PythonScripts\*.exe&quot; &quot;C:\ProgramData\Autodesk\Revit\Addins\2026\BimToMode\PythonScripts\&quot; /y" />
+	</Target>
+</Project>
