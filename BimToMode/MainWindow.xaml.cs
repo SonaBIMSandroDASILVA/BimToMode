@@ -1,4 +1,5 @@
-﻿using Autodesk.Revit.DB;
+﻿// (Le fichier complet avec corrections de nullabilité)
+using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using Newtonsoft.Json.Linq;
 using System;
@@ -10,6 +11,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Xml.Linq;
 using System.Windows.Controls;
+using Microsoft.Win32;
 
 
 namespace BimToMode
@@ -18,11 +20,11 @@ namespace BimToMode
     {
         private UIDocument _uiDocument;
         private Document _document;
-        private JToken _mursPorteursData;
+        private JToken? _mursPorteursData; // rendu nullable et initialisé implicitement à null
 
 
         // Chemin fixe du JSON (écrit en dur)
-        private readonly string _pythonOutputPath = @"U:\Documents\COURS\Projet\resultats_detectionv2.json";
+        private string? _pythonOutputPath = null;
 
         public MainWindow(UIDocument uiDocument)
         {
@@ -72,7 +74,6 @@ namespace BimToMode
         {
             try
             {
-                // Chemin de l'exécutable Python
                 string exePath = @"C:\ProgramData\Autodesk\Revit\Addins\2026\BimToMode\PythonScripts\ScanToBIM.exe";
 
                 if (!File.Exists(exePath))
@@ -89,14 +90,15 @@ namespace BimToMode
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     CreateNoWindow = true,
-                    WorkingDirectory = Path.GetDirectoryName(exePath)
+                    WorkingDirectory = Path.GetDirectoryName(exePath),
+                    // ✅ AJOUT : Forcer l'encodage UTF-8
+                    StandardOutputEncoding = System.Text.Encoding.UTF8,
+                    StandardErrorEncoding = System.Text.Encoding.UTF8
                 };
 
                 using (Process process = new Process { StartInfo = start })
                 {
                     process.Start();
-
-                    // Attendre la fin du processus sans bloquer l'UI
                     await Task.Run(() => process.WaitForExit());
 
                     string errors = await process.StandardError.ReadToEndAsync();
@@ -115,7 +117,7 @@ namespace BimToMode
             catch (Exception ex)
             {
                 MessageBox.Show($"Erreur lors du lancement : {ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
-                return true;
+                return false;
             }
         }
 
@@ -123,6 +125,26 @@ namespace BimToMode
         {
             try
             {
+                // ⚡ ÉTAPE 1 : Demander à l'utilisateur de sélectionner le fichier JSON
+                if (string.IsNullOrEmpty(_pythonOutputPath))
+                {
+                    OpenFileDialog openFileDialog = new OpenFileDialog
+                    {
+                        Title = "Sélectionner le fichier JSON de résultats",
+                        Filter = "Fichiers JSON (*.json)|*.json|Tous les fichiers (*.*)|*.*",
+                        InitialDirectory = @"L:\CNAM-MASTER_CNAM\Commun\GROUPE PSP\"
+                    };
+
+                    if (openFileDialog.ShowDialog() != true)
+                    {
+                        // L'utilisateur a annulé la sélection
+                        return;
+                    }
+
+                    _pythonOutputPath = openFileDialog.FileName;
+                }
+
+                // ⚡ ÉTAPE 2 : Traiter le fichier JSON sélectionné
                 btnSuivant.IsEnabled = false;
                 btnSuivant.Content = "⏳ Lecture du JSON...";
 
@@ -142,69 +164,59 @@ namespace BimToMode
         {
             try
             {
-                if (!File.Exists(_pythonOutputPath))
+                // ⚡ MODIFICATION : Vérification du chemin
+                if (string.IsNullOrEmpty(_pythonOutputPath) || !File.Exists(_pythonOutputPath))
+                {
+                    MessageBox.Show(
+                        "Le fichier JSON sélectionné est introuvable.",
+                        "Erreur",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Error);
                     return;
+                }
 
                 string jsonContent = File.ReadAllText(_pythonOutputPath);
-                JObject data = JObject.Parse(jsonContent);
+                JObject? data = JObject.Parse(jsonContent);
 
-                // Nettoyer et récupérer Niveau 0
                 Level levelZero = CleanAndGetLevelZero(_document);
-
-                //
                 bool isFirstLevelCreated = false;
 
-                if (data["plans_horizontaux"] != null)
+                JToken? plans = data?["plans_horizontaux"];
+                if (plans != null)
                 {
-                    var plans = data["plans_horizontaux"];
-
-                    if (plans["sol"] != null)
+                    JToken? sols = plans["sol"];
+                    if (sols != null)
                     {
-                        CreateLevelsFromPlans(plans["sol"], "Sol", ref isFirstLevelCreated, levelZero);
-
-                        // Créer les sols correspondants
-                        CreateFloors(plans["sol"]);
+                        CreateLevelsFromPlans(sols, "Sol", ref isFirstLevelCreated, levelZero);
+                        CreateFloors(sols);
                     }
 
-                    if (plans["plafond"] != null)
+                    JToken? plafonds = plans["plafond"];
+                    if (plafonds != null)
                     {
-
-                        // Créer les plafonds correspondants
-                        CreateCeilings(plans["plafond"]);
+                        CreateCeilings(plafonds);
                     }
-
-
-                    //if (plans["toiture"] != null)
-                    //{
-                    //    CreateLevelsFromPlans(plans["toiture"], "Toiture", ref isFirstLevelCreated, levelZero);
-                    //}
-
                 }
 
-                if (data["plans_verticaux"] != null)
+                JToken? plansVert = data?["plans_verticaux"];
+                if (plansVert != null)
                 {
-                    var murs = data["plans_verticaux"];
-
-                    // Remplir la liste des types de murs dans l'UI
+                    var murs = plansVert;
                     PopulateWallTypesSelection();
 
-                    if (murs["mur_porteur"] != null)
+                    JToken? murPorteur = murs["mur_porteur"];
+                    if (murPorteur != null)
                     {
-                        _mursPorteursData = murs["mur_porteur"];
-
-
+                        _mursPorteursData = murPorteur;
                     }
 
-                    if (murs["cloison"] != null)
+                    JToken? cloison = murs["cloison"];
+                    if (cloison != null)
                     {
                         var selectedWallTypeIds = GetSelectedWallTypes();
-
-                        // Créer les plafonds correspondants
-                        ProcessMurs(murs["cloison"], selectedWallTypeIds);
-
+                        ProcessMurs(cloison, selectedWallTypeIds);
                     }
                 }
-
             }
             catch (Exception ex)
             {
@@ -308,8 +320,10 @@ namespace BimToMode
         /// <summary>
         /// Crée ou met à jour les niveaux dans Revit à partir des plans d'une catégorie (sol/plafond/toiture)
         /// </summary>
-        private void CreateLevelsFromPlans(JToken plansToken, string prefixName, ref bool isFirstLevelCreated, Level levelZero)
+        private void CreateLevelsFromPlans(JToken? plansToken, string prefixName, ref bool isFirstLevelCreated, Level levelZero)
         {
+            if (plansToken == null) return;
+
             using (Transaction tx = new Transaction(_document, $"Création des niveaux {prefixName}"))
             {
                 tx.Start();
@@ -365,17 +379,25 @@ namespace BimToMode
         /// Crée des sols dans Revit à partir des données JSON
         /// 
         /// <summary>
-        private void CreateFloors(JToken floorsToken)
+        private void CreateFloors(JToken? floorsToken)
         {
+            if (floorsToken == null) return;
+
             // Récupérer un FloorType par défaut
-            FloorType floorType = new FilteredElementCollector(_document)
+            FloorType? floorType = new FilteredElementCollector(_document)
                                     .OfClass(typeof(FloorType))
                                     .Cast<FloorType>()
-                                    .FirstOrDefault(ft => ft.Name.Contains("Béton"))
+                                    .FirstOrDefault(ft => ft.Name != null && ft.Name.Contains("Béton"))
                                 ?? new FilteredElementCollector(_document)
                                     .OfClass(typeof(FloorType))
                                     .Cast<FloorType>()
-                                    .First();
+                                    .FirstOrDefault();
+
+            if (floorType == null)
+            {
+                MessageBox.Show("Aucun type de sol trouvé dans le projet.", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
 
             using (Transaction tx = new Transaction(_document, "Création des sols"))
             {
@@ -398,11 +420,14 @@ namespace BimToMode
 
                     // Créer un CurveLoop à partir du contour JSON
                     CurveLoop loop = new CurveLoop();
-                    var points = floor["contour"];
-                    for (int i = 0; i < points.Count(); i++)
+                    JArray? pointsArray = floor["contour"] as JArray;
+                    if (pointsArray == null || pointsArray.Count == 0) continue;
+
+                    for (int i = 0; i < pointsArray.Count; i++)
                     {
-                        var p1 = points[i];
-                        var p2 = points[(i + 1) % points.Count()];
+                        JArray? p1 = pointsArray[i] as JArray;
+                        JArray? p2 = pointsArray[(i + 1) % pointsArray.Count] as JArray;
+                        if (p1 == null || p2 == null || p1.Count < 2 || p2.Count < 2) continue;
 
                         // Conversion mètres → pieds et arrondi
                         double x1 = Math.Round(p1[0].ToObject<double>() * 3.28084, 3);
@@ -432,8 +457,10 @@ namespace BimToMode
         /// <summary>
         /// Crée des sols dans Revit à partir des données JSON
         /// <summary>
-        private void CreateCeilings(JToken ceilingsToken)
+        private void CreateCeilings(JToken? ceilingsToken)
         {
+            if (ceilingsToken == null) return;
+
             // Récupérer un type de plafond par défaut
             CeilingType? ceilingType = new FilteredElementCollector(_document)
                                         .OfClass(typeof(CeilingType))
@@ -462,13 +489,15 @@ namespace BimToMode
                                 .OrderBy(l => l.Elevation)
                                 .ToList();
 
+                if (levels.Count == 0) return;
+
                 foreach (var ceiling in ceilingsToken)
                 {
                     double altitudeMeters = Math.Round(ceiling["altitude"]?.ToObject<double>() ?? 0.0, 2);
 
 
                     // Trouver le niveau inférieur
-                    Level lowerLevel = levels.LastOrDefault(l => l.Elevation <= altitudeMeters * 3.28084);
+                    Level? lowerLevel = levels.LastOrDefault(l => l.Elevation <= altitudeMeters * 3.28084);
                     if (lowerLevel == null) lowerLevel = levels.First();
 
                     // Calculer l’altitude réelle en pieds
@@ -479,8 +508,8 @@ namespace BimToMode
                     // Offset par rapport au niveau
                     double offsetFeet = zFeet - lowerLevel.Elevation;
 
-                    var contour = ceiling["contour"];
-                    if (contour == null || !contour.Any())
+                    JArray? contour = ceiling["contour"] as JArray;
+                    if (contour == null || contour.Count == 0)
                     {
                         Debug.WriteLine($"⚠️ Plafond ignoré (aucun contour défini)");
                         continue;
@@ -488,12 +517,12 @@ namespace BimToMode
 
                     // Créer le profil du plafond avec conversion mètres → pieds et arrondi
                     CurveLoop loop = new CurveLoop();
-                    for (int i = 0; i < contour.Count(); i++)
+                    for (int i = 0; i < contour.Count; i++)
                     {
-                        var p1 = contour[i];
-                        if (p1 == null || p1.Count() < 2) continue;
-                        var p2 = contour[(i + 1) % contour.Count()];
-                        if (p2 == null || p2.Count() < 2) continue;
+                        JArray? p1 = contour[i] as JArray;
+                        if (p1 == null || p1.Count < 2) continue;
+                        JArray? p2 = contour[(i + 1) % contour.Count] as JArray;
+                        if (p2 == null || p2.Count < 2) continue;
 
                         double x1 = Math.Round(p1[0].ToObject<double>() * 3.28084, 3);
                         double y1 = Math.Round(p1[1].ToObject<double>() * 3.28084, 3);
@@ -564,14 +593,10 @@ namespace BimToMode
             return lvl;
         }
 
-
-
-
-
         /// <summary>
         /// crée des murs dans Revit à partir des données JSON
         /// <summary
-        private void ProcessMurs(JToken mursToken, List<ElementId> selectedWallTypes)
+        private void ProcessMurs(JToken? mursToken, List<ElementId> selectedWallTypes)
         {
             if (mursToken == null || !mursToken.Any())
             {
@@ -590,6 +615,7 @@ namespace BimToMode
             var wallTypes = selectedWallTypes
                             .Select(id => _document.GetElement(id) as WallType)
                             .Where(wt => wt != null)
+                            .Cast<WallType>()
                             .ToList();
 
             if (wallTypes.Count == 0)
@@ -611,7 +637,9 @@ namespace BimToMode
 
                     var startPointToken = mur["start"];
                     var endPointToken = mur["end"];
-                    if (startPointToken == null || endPointToken == null)
+                    JArray? startPointArray = startPointToken as JArray;
+                    JArray? endPointArray = endPointToken as JArray;
+                    if (startPointArray == null || endPointArray == null || startPointArray.Count < 2 || endPointArray.Count < 2)
                         continue;
 
                     Level? levelZero = GetLevelZero(_document);
@@ -622,25 +650,18 @@ namespace BimToMode
                     }
 
                     // Conversion mètres -> pieds arrondie
-                    double xStart = Math.Round(startPointToken[0].ToObject<double>() * 3.28084, 2);
-                    double yStart = Math.Round(startPointToken[1].ToObject<double>() * 3.28084, 2);
-                    double xEnd = Math.Round(endPointToken[0].ToObject<double>() * 3.28084, 2);
-                    double yEnd = Math.Round(endPointToken[1].ToObject<double>() * 3.28084, 2);
+                    double xStart = Math.Round(startPointArray[0].ToObject<double>() * 3.28084, 2);
+                    double yStart = Math.Round(startPointArray[1].ToObject<double>() * 3.28084, 2);
+                    double xEnd = Math.Round(endPointArray[0].ToObject<double>() * 3.28084, 2);
+                    double yEnd = Math.Round(endPointArray[1].ToObject<double>() * 3.28084, 2);
 
                     XYZ start = new XYZ(xStart, yStart, levelZero.Elevation);
                     XYZ end = new XYZ(xEnd, yEnd, levelZero.Elevation);
 
                     // 🔹 Choisir le type de mur dont l'épaisseur ≤ JSON et la plus proche
-                    // 🔹 Sélectionner le type de mur dont l'épaisseur est la plus proche de la valeur JSON
-                    WallType? wallTypeToUse = wallTypes
+                    WallType wallTypeToUse = wallTypes
                         .OrderBy(wt => Math.Abs((wt.Width * 0.3048) - epaisseurJSON)) // conversion en mètres
-                        .FirstOrDefault();
-
-                    // 🔸 Sécurité : si aucun type trouvé, on prend le plus mince
-                    if (wallTypeToUse == null)
-                        wallTypeToUse = wallTypes.OrderBy(wt => wt.Width).First();
-
-
+                        .First();
 
                     // Créer le mur attaché au Niveau 0
                     Wall wall = Wall.Create(_document, Line.CreateBound(start, end), wallTypeToUse.Id, levelZero.Id, 10.0, 0.0, false, false);
@@ -671,10 +692,6 @@ namespace BimToMode
             }
         }
 
-
-
-
-
         /// <summary>
         /// Récupère le Niveau 0 existant dans le document.
         /// Retourne null si aucun Niveau 0 n'existe.
@@ -693,7 +710,7 @@ namespace BimToMode
         /// Pose des ouvertures (portes/fenêtres) dans les murs à partir des données JSON
         /// </summary>
         /// <param name="suppressOnError">Si true, supprime l'ouverture en cas d'erreur de coupe</param>
-        private void ProcessOuverture(JToken ouverturesToken)
+        private void ProcessOuverture(JToken? ouverturesToken)
         {
             if (ouverturesToken == null)
             {
@@ -706,7 +723,7 @@ namespace BimToMode
                 tx.Start();
 
                 // 🔹 Récupérer le FamilySymbol "Percement_parois"
-                FamilySymbol percSymbol = new FilteredElementCollector(_document)
+                FamilySymbol? percSymbol = new FilteredElementCollector(_document)
                                             .OfClass(typeof(FamilySymbol))
                                             .Cast<FamilySymbol>()
                                             .FirstOrDefault(f => f.Name == "Percement_parois");
@@ -720,14 +737,14 @@ namespace BimToMode
                 if (!percSymbol.IsActive)
                     percSymbol.Activate();
 
-                JObject ouverturesObj = ouverturesToken as JObject;
+                JObject? ouverturesObj = ouverturesToken as JObject;
                 if (ouverturesObj == null)
                 {
                     MessageBox.Show("Format JSON invalide pour les ouvertures.", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
                     return;
                 }
 
-                JArray portesToken = ouverturesObj["porte"] as JArray;
+                JArray? portesToken = ouverturesObj["porte"] as JArray;
                 if (portesToken == null || portesToken.Count == 0)
                 {
                     MessageBox.Show("Aucune ouverture à créer.", "Info", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -742,7 +759,7 @@ namespace BimToMode
 
                 foreach (var porte in portesToken)
                 {
-                    JArray centre = porte["centre_3d"] as JArray;
+                    JArray? centre = porte["centre_3d"] as JArray;
                     if (centre == null || centre.Count < 3) continue;
 
                     double x = Math.Round(centre[0].ToObject<double>() * 3.28084, 2);
@@ -750,7 +767,7 @@ namespace BimToMode
                     double z = Math.Round(centre[2].ToObject<double>() * 3.28084, 2);
                     XYZ point = new XYZ(x, y, z);
 
-                    Wall nearestWall = murs
+                    Wall? nearestWall = murs
                         .OrderBy(w =>
                         {
                             if (w.Location is LocationCurve lc)
@@ -780,47 +797,51 @@ namespace BimToMode
                         );
 
                         // 🔹 Mettre à jour les paramètres
-                        Parameter largeurParam = percInstance.LookupParameter("Largeur");
+                        Parameter? largeurParam = percInstance.LookupParameter("Largeur");
                         if (largeurParam != null && !largeurParam.IsReadOnly)
                             largeurParam.Set(Math.Round((porte["largeur"]?.ToObject<double>() ?? 1.0) * 3.28084, 2));
 
-                        Parameter hauteurParam = percInstance.LookupParameter("Hauteur");
+                        Parameter? hauteurParam = percInstance.LookupParameter("Hauteur");
                         if (hauteurParam != null && !hauteurParam.IsReadOnly)
                             hauteurParam.Set(Math.Round((porte["hauteur"]?.ToObject<double>() ?? 2.0) * 3.28084, 2));
 
-                        Parameter seuilParam = percInstance.LookupParameter("AltitudeSeuil");
+                        Parameter? seuilParam = percInstance.LookupParameter("AltitudeSeuil");
                         if (seuilParam != null && !seuilParam.IsReadOnly)
                             seuilParam.Set(Math.Round((porte["altitude_seuil"]?.ToObject<double>() ?? 0.0) * 3.28084, 2));
 
-                        Parameter Decalagehote = percInstance.LookupParameter("Décalage par rapport à l'hôte");
+                        Parameter? Decalagehote = percInstance.LookupParameter("Décalage par rapport à l'hôte");
                         if (Decalagehote != null && !Decalagehote.IsReadOnly)
                             Decalagehote.Set(0.0);
 
                         // 🔹 Appliquer la rotation selon la normale uniquement
-                        JToken orientationToken = porte["orientation"];
+                        JToken? orientationToken = porte["orientation"];
                         if (orientationToken != null)
                         {
-                            JArray normaleArray = orientationToken["normale"] as JArray;
-                            XYZ normale = XYZ.BasisX;
+                            JArray? normaleArray = orientationToken["normale"] as JArray;
 
                             if (normaleArray != null && normaleArray.Count == 3)
                             {
-                                // Arrondir à -1, 0 ou 1 puis mettre en valeur absolue
-                                double nx = Math.Abs(Math.Round(normaleArray[0].ToObject<double>()));
-                                double ny = Math.Abs(Math.Round(normaleArray[1].ToObject<double>()));
-                                normale = new XYZ(nx, ny, 0);
+                                // Récupérer les composantes de la normale
+                                double nx = normaleArray[0].ToObject<double>();
+                                double ny = normaleArray[1].ToObject<double>();
 
-                                // Normale verticale → utiliser X+
-                                if (normale.IsZeroLength())
-                                    normale = new XYZ(1, 0, 0);
+                                // Créer le vecteur normal
+                                XYZ normale = new XYZ(nx, ny, 0);
+
+                                // Si la normale est nulle, utiliser une direction par défaut
+                                if (!normale.IsZeroLength())
+                                {
+                                    // Calculer l'angle de la normale
+                                    double angleNormale = Math.Atan2(normale.Y, normale.X);
+
+                                    // 🔹 Ajouter 90° (π/2 radians) pour corriger l'orientation
+                                    double angleCorrige = angleNormale + (Math.PI / 2);
+
+                                    // Rotation autour de l'axe vertical
+                                    Line rotationAxis = Line.CreateBound(point, point + XYZ.BasisZ);
+                                    ElementTransformUtils.RotateElement(_document, percInstance.Id, rotationAxis, angleCorrige);
+                                }
                             }
-
-
-                            // Rotation autour de l’axe vertical
-                            Line rotationAxis = Line.CreateBound(point, point + XYZ.BasisZ);
-                            double angle = Math.Atan2(normale.Y, normale.X);
-
-                            ElementTransformUtils.RotateElement(_document, percInstance.Id, rotationAxis, angle);
                         }
 
                         try
@@ -844,9 +865,6 @@ namespace BimToMode
 
             MessageBox.Show("✅ Ouvertures créées avec succès.", "Succès", MessageBoxButton.OK, MessageBoxImage.Information);
         }
-
-
-
 
         /// <summary>
         /// Création de coupes centrées dans le modèle
@@ -873,7 +891,7 @@ namespace BimToMode
 
                 foreach (var mur in murs)
                 {
-                    LocationCurve lc = mur.Location as LocationCurve;
+                    LocationCurve? lc = mur.Location as LocationCurve;
                     if (lc == null) continue;
 
                     XYZ p1 = lc.Curve.GetEndPoint(0);
@@ -933,7 +951,7 @@ namespace BimToMode
         /// <summary
         private void CreateSectionView(Document doc, XYZ p1, XYZ p2, double zMin, double zMax, string name)
         {
-            ViewFamilyType viewFamilyType = new FilteredElementCollector(doc)
+            ViewFamilyType? viewFamilyType = new FilteredElementCollector(doc)
                 .OfClass(typeof(ViewFamilyType))
                 .Cast<ViewFamilyType>()
                 .FirstOrDefault(vft => vft.ViewFamily == ViewFamily.Section);
@@ -969,6 +987,8 @@ namespace BimToMode
             ViewSection viewSection = ViewSection.CreateSection(doc, viewFamilyType.Id, sectionBox);
             viewSection.Name = name;
         }
+
+
 
         /// <summary>
         /// Méthode appelée lorsque l'utilisateur clique sur "✅ Valider les murs"
@@ -1006,8 +1026,18 @@ namespace BimToMode
                 MessageBox.Show("✅ Les murs ont été créés avec succès.",
                                 "Succès", MessageBoxButton.OK, MessageBoxImage.Information);
 
-                // 🔹 Ici, poursuivre automatiquement sur les percements
-                ProcessOuverture(JObject.Parse(File.ReadAllText(_pythonOutputPath))["ouvertures"]);
+                // 🔹 Correction CS8604 : Vérification de nullité avant lecture du fichier
+                if (!string.IsNullOrEmpty(_pythonOutputPath))
+                {
+                    JObject parsed = JObject.Parse(File.ReadAllText(_pythonOutputPath));
+                    ProcessOuverture(parsed["ouvertures"]);
+                }
+                else
+                {
+                    MessageBox.Show("Le chemin du fichier JSON de sortie Python est introuvable.",
+                                    "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
 
                 // Puis sur les coupes
                 Créationcoupe(_document);

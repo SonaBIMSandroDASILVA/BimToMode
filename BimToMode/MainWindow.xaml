@@ -126,9 +126,5 @@
                 </StackPanel>
             </DockPanel>
         </Border>
-
-
-
-
     </Grid>
 </Window>
