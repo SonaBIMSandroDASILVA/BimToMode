@@ -8,6 +8,12 @@
 		<Configurations>Debug;Release</Configurations>
 		<LangVersion>latest</LangVersion>
 	</PropertyGroup>
+	<ItemGroup>
+	  <None Remove="Ressources\Icons\bouton.png" />
+	</ItemGroup>
+	<ItemGroup>
+	  <EmbeddedResource Include="Ressources\Icons\Embedded\bouton.png" />
+	</ItemGroup>
 
 	<!-- Références Revit API -->
 	<ItemGroup>
@@ -30,6 +36,9 @@
 	<ItemGroup>
 		<None Update="MainWindow.xaml">
 			<Generator>MSBuild:Compile</Generator>
+		</None>
+		<None Update="PythonScripts\ScanToBIM.exe">
+		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
 	</ItemGroup>
 
